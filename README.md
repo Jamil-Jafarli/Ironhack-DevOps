@@ -1,2 +1,1 @@
-# Ironhack---DevOps
 # Ironhack-DevOps
