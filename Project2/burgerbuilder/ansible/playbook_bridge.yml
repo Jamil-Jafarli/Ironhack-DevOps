@@ -1,0 +1,18 @@
+---
+- name: Initial operations on jump host
+  hosts: jump
+  gather_facts: false
+  tasks:
+    - name: Test hostname on jump host
+      shell: hostname
+      register: jump_hostname
+    - debug: var=jump_hostname.stdout
+
+- name: Operations on internal VM (via jump host)
+  hosts: internal
+  gather_facts: false
+  tasks:
+    - name: Test hostname on internal VM
+      shell: hostname
+      register: internal_hostname
+    - debug: var=internal_hostname.stdout

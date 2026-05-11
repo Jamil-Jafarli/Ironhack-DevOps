@@ -1,0 +1,69 @@
+name: Ansible Deploy
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_USE_OIDC: "true"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        
+      - name: Terraform Init
+        run: terraform -chdir=terraform init -input=false
+
+      
+      - name: Get Sonarqube Public IP
+        id: get_ip
+        run: |
+          SONARQUBE_IP=$(terraform -chdir=terraform output -raw sonarqube_vm_public_ip)
+          echo "SONARQUBE_IP=$SONARQUBE_IP" >> $GITHUB_ENV
+          echo "[DEBUG] Sonarqube Public IP: $SONARQUBE_IP"
+
+      - name: Debug Sonarqube Public IP
+        run: |
+          echo "[DEBUG] SONARQUBE_IP from env: $SONARQUBE_IP"
+
+      - name: Render dynamic inventory
+        run: |
+          export SONARQUBE_IP=${{ env.SONARQUBE_IP }}
+          export SONARQUBE_VM_PASSWORD=${{ secrets.SONARQUBE_VM_PASSWORD }}
+          export VM_PASSWORD=${{ secrets.VM_PASSWORD }}
+          echo "[DEBUG] Rendering inventory with SONARQUBE_IP=$SONARQUBE_IP"
+          envsubst < ansible/dynamic_inventory.ini.j2 > ansible/dynamic_inventory.ini
+          cat ansible/dynamic_inventory.ini
+
+      - name: Run Ansible Playbook (bridge)
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+        run: |
+          ansible-playbook -i ansible/dynamic_inventory.ini ansible/playbook_bridge.yml
